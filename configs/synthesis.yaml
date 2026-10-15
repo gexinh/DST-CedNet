@@ -1,0 +1,25 @@
+# Paths are relative to the repository root. MATLAB Engine is required.
+cortex_path: support_data/simulation/Cortex_1024.mat
+leadfield_path: support_data/simulation/Gain_n_1024.mat
+tbf_path: support_data/simulation/TBF.mat
+output_dir: outputs/synthetic
+seed: 2026
+source_count: 1
+# Random area in cm^2, or set areas_cm2 to one fixed value per component.
+area_range_cm2: [3.0, 15.0]
+areas_cm2: null
+allow_overlap: false
+# null uses signed simplex coefficients; a number requests exact two-source
+# Pearson correlation inside the centered TBF span.
+temporal_correlation: null
+# null preserves clean sensors. Use a finite dB value for noisy test inputs.
+sensor_snr_db: null
+# Shards keep memory bounded. These are example counts, not a paper-scale run.
+train_samples: 128
+validation_samples: 32
+test_samples: 32
+shard_size: 64
+# The supplied legacy basis has 41 points; the 40-point simulation profile
+# explicitly drops its first point. The supplied lead field has 63 sensors.
+time_points: 40
+drop_first: true

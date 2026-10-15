@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+build/
+dist/
+outputs/
+datasets/
+logs/
+.env
+.env.*
+*.log
+*.weights.h5
+*.keras
+.DS_Store

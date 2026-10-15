@@ -1,0 +1,22 @@
+# Maintained version of the distributed Python draft's simulated topology.
+# The separately stored historical MEG checkpoint uses a different topology.
+root_dir: ..
+data:
+  manifest: outputs/synthetic/manifest.json
+model:
+  profile: legacy_architecture
+training:
+  output_dir: outputs/legacy_training
+  seed: 2026
+  epochs: 300
+  batch_size: 32
+  learning_rate: 0.001
+  minimum_learning_rate: 0.0
+  warmup_epochs: 20
+  cooldown_epochs: 0
+  lambda_sensor: 10.0
+  lambda_source: 150.0
+  delta: 0.01
+  loss_reduction: mean
+  snr_db: -5.0
+  noise_mode: channel_variance

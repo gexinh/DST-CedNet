@@ -1,0 +1,38 @@
+# Tiny full-pipeline check; generated data and results are not paper experiments.
+root_dir: ..
+data:
+  manifest: outputs/smoke_synthetic/manifest.json
+model:
+  profile: paper
+training:
+  output_dir: outputs/smoke_training
+  seed: 2026
+  epochs: 1
+  batch_size: 1
+  max_batches: 1
+  learning_rate: 0.0001
+  warmup_epochs: 0
+  cooldown_epochs: 0
+  lambda_sensor: 1.0
+  lambda_source: 15.0
+  delta: 0.1
+  loss_reduction: paper
+  snr_db: -5.0
+  noise_mode: sample_energy
+synthesis:
+  cortex_path: support_data/simulation/Cortex_1024.mat
+  leadfield_path: support_data/simulation/Gain_n_1024.mat
+  tbf_path: support_data/simulation/TBF.mat
+  output_dir: outputs/smoke_synthetic
+  seed: 2026
+  source_count: 1
+  area_range_cm2: [3.0, 15.0]
+  allow_overlap: false
+  temporal_correlation: null
+  sensor_snr_db: -5.0
+  train_samples: 4
+  validation_samples: 4
+  test_samples: 4
+  shard_size: 4
+  time_points: 40
+  drop_first: true

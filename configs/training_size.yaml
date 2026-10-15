@@ -1,0 +1,8 @@
+# Section III-F / Table II. These are requested runs, not reproduced results.
+training_samples: [1500, 4500, 9000, 18000, 27000, 36000]
+# Matched validation sizes are a release scheduling choice; Section III-F
+# does not give separate validation counts for every point in this sweep.
+validation_samples: [1500, 4500, 9000, 18000, 27000, 36000]
+source_count: 1
+batch_size: 32
+epochs: 250

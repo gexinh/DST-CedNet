@@ -1,0 +1,11 @@
+# Paper Sections III-B–III-E. This file plans evaluation, not model training.
+samples_per_condition: 100
+seed: 2026
+method: wmne
+regularization: 0.05
+depth: 1.0
+# null selects all 16 conditions. Supply a list of IDs to select a subset.
+conditions: null
+# --generate requires a synthesis configuration with cortex, gain and TBF paths.
+# Keep this null to evaluate existing per-condition manifests.
+synthesis_config: null

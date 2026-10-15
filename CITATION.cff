@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use DST-CedNet, please cite the paper below."
+title: DST-CedNet
+type: software
+version: 0.1.0
+repository-code: https://github.com/gexinh/DST-CedNet
+authors:
+  - family-names: Huang
+    given-names: Gexin
+preferred-citation:
+  type: article
+  title: "Electromagnetic Source Imaging via a Data-Synthesis-Based Convolutional Encoder–Decoder Network"
+  authors:
+    - family-names: Huang
+      given-names: Gexin
+    - family-names: Liu
+      given-names: Ke
+    - family-names: Liang
+      given-names: Jiawen
+    - family-names: Cai
+      given-names: Chang
+    - family-names: Gu
+      given-names: Zheng Hui
+    - family-names: Qi
+      given-names: Feifei
+    - family-names: Li
+      given-names: Yuanqing
+    - family-names: Yu
+      given-names: Zhu Liang
+    - family-names: Wu
+      given-names: Wei
+  journal: IEEE Transactions on Neural Networks and Learning Systems
+  volume: 35
+  issue: 5
+  start: 6423
+  end: 6437
+  year: 2024
+  doi: 10.1109/TNNLS.2022.3209925
+  url: https://doi.org/10.1109/TNNLS.2022.3209925
