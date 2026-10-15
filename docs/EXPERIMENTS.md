@@ -1,6 +1,6 @@
 # Simulation experiments and evaluation
 
-The evaluation runner covers the four simulation experiments in Sections III-B–III-E of the [paper](https://doi.org/10.1109/TNNLS.2022.3209925). Each condition evaluates an existing model or an explicitly selected linear baseline on independently synthesized test trials. Model training is a separate step.
+The evaluation runner compares DST-CedNet and other source-imaging methods on the four simulation experiments in Sections III-B–III-E of the [paper](https://doi.org/10.1109/TNNLS.2022.3209925). Each method receives the same observed sensor signals and lead field. Model training is a separate step.
 
 ## Experimental conditions
 
@@ -23,6 +23,25 @@ python scripts/run_experiments.py --condition snr_-5 --condition correlation_0.9
 ```
 
 ## Running an evaluation
+
+List the methods and their paper links:
+
+```bash
+python scripts/run_experiments.py --list-methods
+```
+
+Run several methods on shared observations:
+
+```bash
+python scripts/run_experiments.py --run --generate \
+  --synthesis-config configs/synthesis.yaml \
+  --condition snr_-5 --samples 2 \
+  --methods wmne-matlab loreta sbl focuss \
+  --baseline-config configs/baselines.yaml \
+  --output outputs/comparison
+```
+
+Multiple-method runs save `METHOD/CONDITION/` directories and a combined `comparison.csv`. A single-method run keeps `CONDITION/` directories. Each summary records the method name, citation DOI, resolved parameters, prediction seed, and a checksum of the shared observed sensors. Parameter settings come from [baselines.yaml](../configs/baselines.yaml); pass `--baseline-config` to use another YAML. Methods use signed source time courses throughout; spatial metrics derive their own amplitude scores.
 
 Prepare a dataset manifest for each condition under `DATA_ROOT/CONDITION_ID/manifest.json`. Manifests identify the gain matrix and source positions in meters, and list test shards with `sources`, `sensors`, spatial components, and zero-based patch centers. The condition runner **requires** `spatial_components` with shape `(samples, vertices, patches)` and `requested_areas_cm2` with shape `(samples, patches)` so that source count and requested areas can be checked. Each component must be nonempty and the component labels must describe the true active vertices. Sensor SNR is checked from the clean forward signal. Correlation experiments additionally require the source-component waveforms, so that the requested correlation can be verified. Standalone evaluation of saved predictions remains usable without these experimental-condition labels.
 
@@ -53,7 +72,7 @@ python scripts/run_experiments.py --run --method dst-cednet \
   --output outputs/experiments/dst_cednet
 ```
 
-Use `--weights CHECKPOINT` when evaluating a single compatible checkpoint on a selected subset. A checkpoint's channel count, temporal length and source count must match its data. Its adjacent `metadata.json` must also identify the training patch count as `n_components`; this prevents a single-patch model from silently being substituted for a two-patch experiment. The historical MEG checkpoint is intended for its original 102-channel, 48-point setup and has no verified patch-count metadata for this condition runner; use the generic prediction command for that checkpoint.
+Use `--weights CHECKPOINT` when evaluating a single compatible checkpoint on a selected subset. A checkpoint's channel count, temporal length and source count must match its data. Keep the generated `metadata.json` beside the weights; it identifies the training patch count as `n_components`. Include `dst-cednet` in `--methods` to compare your trained model with the selected baselines in one run.
 
 Each completed condition produces `prediction.npz`, `per_sample.csv`, and `summary.json`. The summary contains mean, sample standard error, valid observation count, and total count for every metric. `status.json` tracks completed conditions and records a failure if a later condition cannot run. Undefined measurements appear as blank CSV cells or JSON `null`, with the valid count reduced accordingly.
 
@@ -94,7 +113,11 @@ Reported SEM is the sample standard deviation divided by the square root of the 
 
 ## Available baselines
 
-`mne` and `wmne` are native NumPy Tikhonov inverses with the following specified operator:
+Method papers and complete citations are in [REFERENCES.md](REFERENCES.md).
+
+### MNE and wMNE
+
+`mne` and `wmne` are NumPy Tikhonov inverses:
 
 ```text
 W = D L.T (L D L.T + alpha I)^(-1)
@@ -104,9 +127,35 @@ D[j,j] = ||L[:,j]||^(-2 * depth)   # wmne
 S_hat = W X
 ```
 
-Defaults are `regularization=0.05` and `depth=1`. These are transparent comparison baselines, without an implicit noise-whitening or Brainstorm parameter-selection pipeline. They are not claimed to reproduce the paper's baseline configurations.
+Defaults are `regularization=0.05` and `depth=1`. `wmne-matlab` uses the original code's column-norm weighting, `D[j,j] = ||L[:,j]||^(-depth)`, with **direct** `alpha=regularization`. Its defaults are `alpha=2/3`, `depth=1`, corresponding to the original `wMNE.m` setting `lambda=1.5`. The MATLAB output retains waveform polarity. To match its weighting in NumPy, use half the MATLAB depth exponent, and convert alpha using the trace scaling above.
 
-LORETA, SBL, FOCUSS, Champagne, STTONNICA, ESBN, and SIFNet are not registered as runnable native baselines. An unavailable method produces an explicit error rather than substituted estimates. External methods can be evaluated by exporting their actual source estimates in the prediction format. SIFNet activation probabilities support spatial evaluation only; do not invent waveforms to report a temporal reconstruction error.
+### LORETA
+
+`loreta` uses the cortical adjacency `A` and random-walk Laplacian `M = I - D^(-1) A`. Its source covariance is `C = (M.T M + ridge I)^(-1)`, with `ridge = 1e-4 * trace(M.T M) / vertices`, scaled so `trace(L C L.T) = channels`. The estimate is `C L.T (L C L.T + alpha I)^(-1) X`. The default fixed alpha is 3.5. Setting `regularization: 0` fits a scalar prior scale independently for each trial by evidence iteration, then uses the same scale and normalized prior in the posterior. This is a graph-Laplacian LORETA variant; it does not apply sLORETA or eLORETA standardization.
+
+The graph comes from the dataset's cortical faces. Every vertex must have a neighbor. The latest prior/operator is cached within an Engine session; changing the lead field, graph or alpha invalidates the corresponding cached value.
+
+### SBL and FOCUSS
+
+Both methods share a diagonal source covariance across all time points in a trial. With `Gamma = diag(gamma)`:
+
+```text
+Sigma = L Gamma L.T + alpha I
+S_hat = Gamma L.T Sigma^(-1) X
+source_power[j] = mean_t(S_hat[j,t]^2)
+SBL:    gamma[j] <- sqrt(source_power[j] / (L[:,j].T Sigma^(-1) L[:,j]))
+FOCUSS: gamma[j] <- source_power[j]^(1 - p/2)
+```
+
+These independently implemented updates follow the original wrappers' SBL fast shared-variance and FOCUSS `p=1` choices. SBL defaults to `alpha=0.25`, 20 iterations; FOCUSS defaults to `alpha=0.35`, 35 iterations. Initialization is one for nonzero lead-field columns; source variances below `1e-16` are pruned, and iteration can stop when the maximum source change falls below `1e-12`. Sensor noise is fixed and isotropic; the SBL implementation does not estimate background covariance or implement noise-learning Champagne.
+
+### STTONNICA
+
+`sttonnica` calls an externally supplied STTONNICA MATLAB package through a bundled adapter. See [package setup](REFERENCES.md#sttonnica-setup). It uses the cortical combinatorial Laplacian `D-A` and reconstructs signed waveforms as `spatial_components @ temporal_components`.
+
+The default four factor components are an algorithm setting, independent of the true number of active patches. The external implementation requires at least two factors. Defaults are 300 iterations, 25 restarts, sparsity `1e-6`, smoothness `1e4`, orthogonality 1, and elastic-net penalty `1e-8`. Supply lists for sparsity/smoothness to search a penalty grid; the upstream BIC selects a penalty pair and restart at fixed factor count. Larger grids and more restarts increase runtime. Each trial uses `(condition_seed + trial_index) mod 2^32`.
+
+All comparison settings are explicit configurations. They do not include an automatic whitening or hyperparameter-selection pipeline shared across methods. To evaluate another implementation, export its actual source estimates in the prediction format above.
 
 ## Training-size study
 

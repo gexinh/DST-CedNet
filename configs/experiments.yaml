@@ -2,8 +2,7 @@
 samples_per_condition: 100
 seed: 2026
 method: wmne
-regularization: 0.05
-depth: 1.0
+# Method parameters are configured in configs/baselines.yaml.
 # null selects all 16 conditions. Supply a list of IDs to select a subset.
 conditions: null
 # --generate requires a synthesis configuration with cortex, gain and TBF paths.

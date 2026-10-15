@@ -46,6 +46,21 @@ software license.
 
 MATLAB and its Engine API are MathWorks products and require a suitable MATLAB
 installation. TensorFlow, NumPy, SciPy, PyYAML, h5py and optional plotting tools
-retain their own licenses. External comparison methods are obtained from their
-authors; the provided MNE/wMNE implementations are identified by their actual
-algorithm rather than substituted for unavailable comparators.
+retain their own licenses.
+
+## Comparison methods
+
+The maintained MNE/wMNE, graph-Laplacian LORETA, SBL and FOCUSS functions are
+independent implementations of the algorithms listed in
+[REFERENCES.md](REFERENCES.md). The earlier SBL/FOCUSS wrappers called
+`sparse_learning.m`, whose header credits David Wipf. That historical source
+file is not bundled with the maintained package.
+
+The STTONNICA adapter calls an external MATLAB package supplied by the user.
+The historical package headers credit the Cuban Neuroscience Center
+(2009–2016) and Joint China–Cuba Lab (2016); its accompanying algorithm-update
+note cites [Valdés-Sosa et al., 2009](https://doi.org/10.1002/hbm.20784).
+No license grant or software release number was identified in those supplied
+files. Obtain the implementation and applicable terms from its authors. The
+adapter's license applies to the adapter code; external method files retain
+their own terms.

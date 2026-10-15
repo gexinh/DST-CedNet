@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dst-cednet"
-version = "0.1.0"
+version = "0.2.0"
 description = "Data-synthesized spatiotemporal convolutional encoder-decoder for electromagnetic source imaging"
 readme = "README.md"
 requires-python = ">=3.10,<3.12"

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""List paper conditions or evaluate actual checkpoints/linear inverse methods."""
+"""Evaluate source-imaging methods on shared simulation conditions."""
 from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -10,7 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
-from dst_cednet.baselines import AVAILABLE_BASELINES, predict_sources as baseline_predict
+from dst_cednet.evaluation_methods import AVAILABLE_METHODS, METHOD_CATALOG, BaselineRunner
 from dst_cednet.experiments import (condition_plan, evaluate_predictions,
                                     read_evaluation_dataset, save_evaluation,
                                     training_size_plan)
@@ -89,12 +91,20 @@ def main(argv=None):
     parser.add_argument("--data-root", default="outputs/experiments/data")
     parser.add_argument("--generate", action="store_true", help="Generate missing test datasets through MATLAB Engine")
     parser.add_argument("--synthesis-config", help="Synthesis YAML used by --generate")
-    parser.add_argument("--method", choices=[*AVAILABLE_BASELINES, "dst-cednet"])
+    methods_group = parser.add_mutually_exclusive_group()
+    methods_group.add_argument("--method", choices=AVAILABLE_METHODS, help="Evaluate one method")
+    methods_group.add_argument("--methods", nargs="+", choices=AVAILABLE_METHODS, help="Compare methods on the same observations")
+    parser.add_argument("--list-methods", action="store_true", help="Show method names, runtimes and references")
+    parser.add_argument("--baseline-config", default="configs/baselines.yaml", help="Method-specific parameters")
+    parser.add_argument("--sttonnica-dir", help="Folder containing upstream STTONNICA.m, KSMG.m and stand.m")
     parser.add_argument("--weights", help="Checkpoint used for all selected conditions")
     parser.add_argument("--weights-single", help="Single-patch checkpoint")
     parser.add_argument("--weights-double", help="Two-patch checkpoint")
     parser.add_argument("--output", default="outputs/experiments/evaluation")
     args = parser.parse_args(argv)
+    if args.list_methods:
+        print(json.dumps(METHOD_CATALOG, indent=2))
+        return
     config = _load_config(args.config)
     if args.training_size or "training_samples" in config:
         if args.run:
@@ -113,13 +123,17 @@ def main(argv=None):
     seed = args.seed if args.seed is not None else config.get("seed", 2026)
     selected = args.condition or config.get("conditions")
     plan = condition_plan(samples=count, seed=seed, selected=selected)
-    method = args.method or config.get("method", "wmne")
+    methods = args.methods or ([args.method] if args.method else config.get("methods") or [config.get("method", "wmne")])
+    if not isinstance(methods, list) or not methods or any(method not in AVAILABLE_METHODS for method in methods):
+        parser.error("methods must list registered source-imaging methods; use --list-methods")
+    if len(set(methods)) != len(methods):
+        parser.error("Select each method once")
     if not args.run:
-        print(json.dumps({"state": "planned", "method": method, "conditions": plan,
+        print(json.dumps({"state": "planned", "methods": methods, "conditions": plan,
                           "total_test_trials": count * len(plan),
-                          "training": "No training is performed by this evaluation runner."}, indent=2))
+                          "evaluations": count * len(plan) * len(methods)}, indent=2))
         return
-    if method == "dst-cednet":
+    if "dst-cednet" in methods:
         missing = [row["id"] for row in plan if not (args.weights or
                    (args.weights_single if row["source_count"] == 1 else args.weights_double))]
         if missing:
@@ -142,12 +156,30 @@ def main(argv=None):
                    if not (data_root / row["id"] / "manifest.json").exists()]
         if missing:
             parser.error("Missing condition datasets; generate them explicitly or supply --generate: " + ", ".join(missing))
+    baseline_config = _load_config(args.baseline_config)
+    parameters = dict(baseline_config.get("methods", {}))
+    # Keep older experiment YAML overrides usable for the NumPy operators.
+    for method in ("mne", "wmne"):
+        overrides = {key: config[key] for key in ("regularization", "depth")
+                     if key in config and (key != "depth" or method == "wmne")}
+        parameters[method] = {**parameters.get(method, {}), **overrides}
+    runner = BaselineRunner(parameters, sttonnica_dir=args.sttonnica_dir)
+    if "sttonnica" in methods:
+        required = ("STTONNICA.m", "KSMG.m", "stand.m")
+        if runner.sttonnica_dir is None or any(not (runner.sttonnica_dir / p).is_file() for p in required):
+            parser.error("STTONNICA requires --sttonnica-dir; see docs/REFERENCES.md for the upstream source")
     output_root.mkdir(parents=True, exist_ok=True)
-    status = {"state": "running", "method": method, "planned_conditions": len(plan), "completed": []}
+    status = {"state": "running", "methods": methods, "planned_conditions": len(plan), "completed": []}
     status_path = output_root / "status.json"
+    comparisons = []
 
     def write_status():
         status_path.write_text(json.dumps(status, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        if comparisons:
+            with (output_root / "comparison.csv").open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(comparisons[0]))
+                writer.writeheader()
+                writer.writerows(comparisons)
 
     write_status()
     try:
@@ -171,33 +203,51 @@ def main(argv=None):
             if gain is None:
                 raise ValueError("The dataset manifest must provide its gain matrix")
             verified = _verify_condition(data, gain, condition)
-            if method in AVAILABLE_BASELINES:
-                prediction = baseline_predict(data["sensors"], gain, method=method,
-                                              regularization=config.get("regularization", 0.05),
-                                              depth=config.get("depth", 1.0))
-                weights = None
-            else:
-                from dst_cednet.inference import predict_sources
-                weights = args.weights or (args.weights_single if condition["source_count"] == 1 else args.weights_double)
-                prediction = predict_sources(weights, data["sensors"], gain)
-            destination = output_root / condition["id"]
-            destination.mkdir(parents=True, exist_ok=True)
-            np.savez_compressed(destination / "prediction.npz", prediction=prediction)
-            records, statistics = evaluate_predictions(data, prediction, coordinates, seed=condition["seed"])
-            result = save_evaluation(destination, records, statistics, metadata={
-                "condition": condition, "method": method, "weights": weights,
-                "manifest": str(manifest_path), **verified,
-                "monte_carlo_unit": "independent test trial; model is held fixed"})
-            status["completed"].append({"id": condition["id"], "summary": str(result), "samples": len(records)})
-            write_status()
+            sensor_hash = hashlib.sha256(np.ascontiguousarray(data["sensors"]).tobytes()).hexdigest()
+            for method in methods:
+                status["active_method"] = method
+                write_status()
+                if method == "dst-cednet":
+                    from dst_cednet.inference import predict_sources
+                    weights = args.weights or (args.weights_single if condition["source_count"] == 1 else args.weights_double)
+                    prediction = predict_sources(weights, data["sensors"], gain)
+                    method_parameters = {}
+                else:
+                    weights = None
+                    prediction = runner.predict(data["sensors"], gain, method=method,
+                        adjacency=data.get("_mesh_adjacency"), seed=condition["seed"])
+                    method_parameters = runner.parameters(method)
+                destination = output_root / method / condition["id"] if len(methods) > 1 else output_root / condition["id"]
+                destination.mkdir(parents=True, exist_ok=True)
+                np.savez_compressed(destination / "prediction.npz", prediction=prediction)
+                records, statistics = evaluate_predictions(data, prediction, coordinates, seed=condition["seed"])
+                result = save_evaluation(destination, records, statistics, metadata={
+                    "condition": condition, "method": method, "weights": weights,
+                    "method_name": METHOD_CATALOG[method]["name"],
+                    "reference": METHOD_CATALOG[method]["reference"],
+                    "parameters": method_parameters, "prediction_seed": condition["seed"],
+                    "observations_sha256": sensor_hash,
+                    "manifest": str(manifest_path), **verified,
+                    "monte_carlo_unit": "independent test trial; model is held fixed"})
+                comparison = {"method": method, "condition": condition["id"]}
+                for metric, values in statistics.items():
+                    for key in ("mean", "sem", "n_valid", "n_total"):
+                        comparison[f"{metric}_{key}"] = values[key]
+                comparisons.append(comparison)
+                status["completed"].append({"id": condition["id"], "method": method,
+                                            "summary": str(result), "samples": len(records)})
+                write_status()
         status["state"] = "complete"
         status.pop("active_condition", None)
+        status.pop("active_method", None)
         write_status()
     except Exception as error:
         status["state"] = "failed"
         status["error"] = f"{type(error).__name__}: {error}"
         write_status()
         raise
+    finally:
+        runner.close()
     print(status_path)
 
 

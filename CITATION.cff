@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use DST-CedNet, please cite the paper below."
 title: DST-CedNet
 type: software
-version: 0.1.0
+version: 0.2.0
 repository-code: https://github.com/gexinh/DST-CedNet
 authors:
   - family-names: Huang

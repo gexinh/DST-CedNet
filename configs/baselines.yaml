@@ -1,0 +1,30 @@
+# Method-specific evaluation settings; use the same file for all conditions.
+root_dir: ..
+methods:
+  mne:
+    regularization: 0.05
+  wmne:
+    regularization: 0.05
+    depth: 1.0
+  wmne-matlab:
+    # Original wMNE lambda=1.5 corresponds to alpha=1/lambda.
+    regularization: 0.6666666666666666
+    depth: 1.0
+  loreta:
+    regularization: 3.5
+  sbl:
+    regularization: 0.25
+    iterations: 20
+  focuss:
+    regularization: 0.35
+    iterations: 35
+    p: 1.0
+  sttonnica:
+    components: 4
+    iterations: 300
+    restarts: 25
+    # Fixed penalty points; lists enable the upstream grid selection.
+    sparsity: [0.000001]
+    smoothness: [10000.0]
+    orthogonality: 1.0
+    elastic_net: 0.00000001

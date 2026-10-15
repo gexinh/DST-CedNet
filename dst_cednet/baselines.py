@@ -5,7 +5,6 @@ import numpy as np
 
 
 AVAILABLE_BASELINES = ("mne", "wmne")
-UNAVAILABLE_BASELINES = ("loreta", "sbl", "focuss", "champagne", "sttonnica", "esbn", "sifnet")
 
 
 def inverse_operator(leadfield, *, method="wmne", regularization=0.05, depth=1.0):

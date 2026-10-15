@@ -97,6 +97,27 @@ class ExperimentTests(unittest.TestCase):
             self.assertEqual(summary["statistics"]["RelativeMSE"]["n_valid"], 2)
             self.assertTrue(summary["metadata"]["sensor_snr_verified"])
             self.assertEqual(summary["metadata"]["method"], "wmne")
+            # Compare two real inverses on one dataset, preserving parameters,
+            # citations, observations and one summary row per method.
+            baseline_config = temporary / "baselines.yaml"
+            baseline_config.write_text("methods:\n  wmne:\n    regularization: 0.1\n    depth: 0.5\n")
+            command[command.index("--method")] = "--methods"
+            command.insert(command.index("wmne"), "mne")
+            command[command.index("--output") + 1] = str(temporary / "comparison")
+            command.extend(["--baseline-config", str(baseline_config)])
+            result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summaries = [json.loads((temporary / f"comparison/{method}/snr_-5/summary.json").read_text())
+                         for method in ("mne", "wmne")]
+            self.assertEqual(summaries[0]["metadata"]["observations_sha256"],
+                             summaries[1]["metadata"]["observations_sha256"])
+            self.assertEqual(summaries[1]["metadata"]["parameters"], {"regularization": .1, "depth": .5})
+            for item in summaries:
+                self.assertTrue(item["metadata"]["reference"].startswith("https://doi.org/"))
+            with (temporary / "comparison/comparison.csv").open() as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual([row["method"] for row in rows], ["mne", "wmne"])
+            self.assertTrue(all(row["RelativeMSE_n_valid"] == "2" for row in rows))
 
     def test_dry_run_is_plan_only(self):
         root = Path(__file__).resolve().parents[1]

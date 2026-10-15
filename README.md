@@ -21,7 +21,7 @@ DST-CedNet learns to reconstruct cortical source time courses from EEG/MEG measu
 
 ## Installation
 
-Use **Python 3.10 or 3.11** and TensorFlow 2.15. MATLAB Engine is required for spatial data synthesis; training, prediction, and evaluation run in Python.
+Use **Python 3.10 or 3.11** and TensorFlow 2.15. MATLAB Engine is used for data synthesis and the MATLAB comparison methods.
 
 ```bash
 git clone https://github.com/gexinh/DST-CedNet.git
@@ -39,11 +39,11 @@ Install the Engine package matching your MATLAB release. For **MATLAB R2023b**:
 python -m pip install matlabengine==23.2.3
 ```
 
-See the [MATLAB guide](docs/MATLAB.md) for installation paths, other releases, and temporal basis extraction. The MATLAB sampler uses base MATLAB functions.
+See the [MATLAB guide](docs/MATLAB.md) for other releases and temporal basis extraction.
 
-## Generate data, train, and evaluate
+## Quick start
 
-The training data are generated locally. The repository includes a 1024-vertex simulation geometry, a **63-channel** lead field, and four temporal basis functions. The 41-point basis is explicitly windowed to 40 points by the configuration. See the [data guide](docs/DATA.md) for arrays, units, and alternative head models.
+Generate training data from the supplied cortical geometry, lead field, and temporal basis functions. The example uses 1024 sources, 63 sensors, and 40 time points. See the [data guide](docs/DATA.md) to use another head model.
 
 First run a small workflow:
 
@@ -66,39 +66,39 @@ python scripts/evaluate.py \
   --output outputs/smoke_evaluation
 ```
 
-`smoke.yaml` generates four examples per split and bounds training. For the single-source paper-method configuration, use:
+The quick start uses four examples per split and one training batch. To train with 27,000 training examples, 27,000 validation examples, and 250 epochs:
 
 ```bash
 python scripts/synthesize.py --config configs/paper.yaml
 python scripts/train.py --config configs/paper.yaml
 ```
 
-This configuration generates **27,000 training and 27,000 validation examples** and trains for 250 epochs. Use [configs/paper_two_sources.yaml](configs/paper_two_sources.yaml) for the two-source model. Generated data are stored in shards to bound loading memory. Existing datasets are preserved; choose a new output directory for a new synthesis run.
+Use [configs/paper_two_sources.yaml](configs/paper_two_sources.yaml) for two-source training. See the [model guide](docs/MODEL.md) for the architecture and objective.
 
-## Experiments
+## Evaluation
 
-The experiment driver covers the four simulation sweeps: sensor SNR, single-source extent, paired source extents, and temporal correlation. It lists the 16 conditions and 100 trials per condition by default:
+Compare source-imaging methods on the same synthesized observations. The evaluation includes sensor SNR, source extent, paired source extents, and temporal correlation experiments.
+
+| Method | Command name | Runtime | Reference |
+|---|---|---|---|
+| Minimum-norm estimation (MNE) | `mne` | Python | [Hämäläinen & Ilmoniemi, 1994](https://doi.org/10.1007/BF02512476) |
+| Weighted MNE (wMNE) | `wmne`, `wmne-matlab` | Python / MATLAB | [Dale & Sereno, 1993](https://doi.org/10.1162/jocn.1993.5.2.162) |
+| LORETA | `loreta` | MATLAB | [Pascual-Marqui et al., 1994](https://doi.org/10.1016/0167-8760%2884%2990014-X) |
+| Sparse Bayesian learning (SBL) | `sbl` | MATLAB | [Wipf & Rao, 2004](https://doi.org/10.1109/TSP.2004.831016), [Wipf & Nagarajan, 2009](https://doi.org/10.1016/j.neuroimage.2008.02.059) |
+| FOCUSS | `focuss` | MATLAB | [Gorodnitsky et al., 1995](https://doi.org/10.1016/0013-4694%2895%2900107-A) |
+| STTONNICA | `sttonnica` | MATLAB + STTONNICA package | [Valdés-Sosa et al., 2009](https://doi.org/10.1002/hbm.20784) |
+
+For a small comparison:
 
 ```bash
-python scripts/run_experiments.py --config configs/experiments.yaml
+python scripts/run_experiments.py --run --generate \
+  --synthesis-config configs/synthesis.yaml \
+  --condition snr_-5 --samples 2 \
+  --methods wmne-matlab loreta sbl focuss \
+  --output outputs/comparison
 ```
 
-Execution requires `--run`. Add `--generate` to synthesize the requested test conditions with MATLAB Engine. The [experiment guide](docs/EXPERIMENTS.md) documents checkpoint selection, training-size experiments, implemented baselines, and metric definitions. Outputs include per-trial results, mean/SEM summaries, and completion status.
-
-The maintained `paper` profile follows the published architecture and training settings, with explicit choices for unspecified layer widths. The included simulation lead field has 63 channels; the paper's simulation setup reports 64. See [model details](docs/MODEL.md) for the architecture, objective, and `legacy_architecture` profile.
-
-## Historical MEG checkpoint
-
-[checkpoints/legacy_meg.h5](checkpoints/legacy_meg.h5) is the original repository's historical Keras model. It accepts **102-channel, 48-point** observations and reconstructs 1024 source time courses. Its architecture differs from the maintained training profiles. The compatibility loader rebuilds its inverse network without executing the embedded historical Lambda functions.
-
-```bash
-python scripts/predict.py \
-  --weights checkpoints/legacy_meg.h5 \
-  --sensors /path/to/measurements.mat --key sensors \
-  --output outputs/meg_sources.mat
-```
-
-Measurements must use the original channel ordering, scale, and time window. See the [checkpoint guide](docs/MODEL.md#historical-meg-checkpoint).
+Method parameters are in [configs/baselines.yaml](configs/baselines.yaml). Results contain source estimates, per-trial metrics, and mean/SEM summaries for each method. STTONNICA uses its author's MATLAB package via `--sttonnica-dir`; see [setup and references](docs/REFERENCES.md). The [evaluation guide](docs/EXPERIMENTS.md) covers DST-CedNet comparisons, all 16 conditions, training-size experiments, and metric definitions.
 
 <details>
 <summary>Network architecture figure</summary>
